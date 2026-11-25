@@ -1,0 +1,48 @@
+name: hollama-web-search
+
+services:
+  searxng:
+    image: ghcr.io/searxng/searxng:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Set SEARXNG_SECRET in .env}
+      SEARXNG_BASE_URL: http://localhost:8080/
+      SEARXNG_PUBLIC_INSTANCE: "false"
+      SEARXNG_LIMITER: "false"
+    volumes:
+      - ./searxng:/etc/searxng:ro
+      - searxng-cache:/var/cache/searxng
+
+  proxy:
+    image: python:3.12-slim
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - searxng
+    command: ["python", "-u", "/app/proxy.py"]
+    environment:
+      PROXY_HOST: 127.0.0.1
+      PROXY_PORT: "8081"
+      OLLAMA_URL: http://127.0.0.1:11434
+      SEARXNG_URL: http://127.0.0.1:8080
+      REQUEST_TIMEOUT: "180"
+      MAX_SEARCH_RESULTS: "8"
+    volumes:
+      - ./proxy.py:/app/proxy.py:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=2)",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  searxng-cache:
